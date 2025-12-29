@@ -1,0 +1,139 @@
+//@version=5
+indicator("Simple SMA + Engulfing", shorttitle="SMA Engulf", overlay=true)
+
+// ========================================
+// MOVING AVERAGES
+// ========================================
+
+ma1_show = input.bool(true, "MA 1", inline="ma1", group="Moving Averages")
+ma1_len = input.int(9, "", inline="ma1", group="Moving Averages")
+ma1_type = input.string("SMA", "", options=["SMA", "EMA", "WMA", "HMA"], inline="ma1", group="Moving Averages")
+ma1_col = input.color(#2962FF, "", inline="ma1", group="Moving Averages")
+
+ma2_show = input.bool(true, "MA 2", inline="ma2", group="Moving Averages")
+ma2_len = input.int(21, "", inline="ma2", group="Moving Averages")
+ma2_type = input.string("SMA", "", options=["SMA", "EMA", "WMA", "HMA"], inline="ma2", group="Moving Averages")
+ma2_col = input.color(#FF6D00, "", inline="ma2", group="Moving Averages")
+
+ma3_show = input.bool(true, "MA 3", inline="ma3", group="Moving Averages")
+ma3_len = input.int(50, "", inline="ma3", group="Moving Averages")
+ma3_type = input.string("SMA", "", options=["SMA", "EMA", "WMA", "HMA"], inline="ma3", group="Moving Averages")
+ma3_col = input.color(#00E676, "", inline="ma3", group="Moving Averages")
+
+getMA(source, length, maType) =>
+    switch maType
+        "SMA" => ta.sma(source, length)
+        "EMA" => ta.ema(source, length)
+        "WMA" => ta.wma(source, length)
+        "HMA" => ta.hma(source, length)
+        => ta.sma(source, length)
+
+ma1 = getMA(close, ma1_len, ma1_type)
+ma2 = getMA(close, ma2_len, ma2_type)
+ma3 = getMA(close, ma3_len, ma3_type)
+
+plot(ma1_show ? ma1 : na, "MA1", ma1_col, 2)
+plot(ma2_show ? ma2 : na, "MA2", ma2_col, 2)
+plot(ma3_show ? ma3 : na, "MA3", ma3_col, 2)
+
+// ========================================
+// ENGULFING PATTERNS
+// ========================================
+
+engulf_show = input.bool(true, "Show Engulfing Patterns", group="Engulfing")
+minBodySize = input.float(0.01, "Min Body %", minval=0.001, maxval=5.0, step=0.01, group="Engulfing")
+
+currentBody = math.abs(close - open)
+previousBody = math.abs(close[1] - open[1])
+minBodyPips = close * (minBodySize / 100)
+
+currentBullish = close > open
+currentBearish = close < open
+prevBullish = close[1] > open[1]
+prevBearish = close[1] < open[1]
+
+bullishEngulfing = prevBearish and currentBullish and open <= close[1] and close >= open[1] and currentBody > previousBody and currentBody >= minBodyPips
+
+bearishEngulfing = prevBullish and currentBearish and open >= close[1] and close <= open[1] and currentBody > previousBody and currentBody >= minBodyPips
+
+plotshape(engulf_show and bullishEngulfing, "Bull Engulf", text="▲", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.white, size=size.small)
+
+plotshape(engulf_show and bearishEngulfing, "Bear Engulf", text="▼", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.small)
+
+// ========================================
+// SWING HIGHS & LOWS
+// ========================================
+
+swing_length = input.int(5, "Swing Detection Length", minval=1, maxval=50, group="Swing Points")
+show_highs = input.bool(true, "Show Swing Highs", group="Swing Points")
+show_lows = input.bool(true, "Show Swing Lows", group="Swing Points")
+show_lines = input.bool(true, "Show Horizontal Lines", group="Swing Points")
+line_extend = input.int(20, "Line Extend (bars)", minval=5, maxval=100, group="Swing Points")
+
+// Pivot High/Low Detection
+pivotHigh = ta.pivothigh(high, swing_length, swing_length)
+pivotLow = ta.pivotlow(low, swing_length, swing_length)
+
+// Plot Swing Highs
+plotshape(show_highs and not na(pivotHigh), "Swing High", text="H", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 30), textcolor=color.white, size=size.tiny, offset=-swing_length)
+
+// Plot Swing Lows  
+plotshape(show_lows and not na(pivotLow), "Swing Low", text="L", style=shape.labelup, location=location.belowbar, color=color.new(color.green, 30), textcolor=color.white, size=size.tiny, offset=-swing_length)
+
+// Draw horizontal lines at swing levels
+var line[] high_lines = array.new_line()
+var line[] low_lines = array.new_line()
+
+if show_lines and not na(pivotHigh)
+    new_line = line.new(bar_index - swing_length, pivotHigh, bar_index - swing_length + line_extend, pivotHigh, color=color.new(color.red, 50), width=1, style=line.style_dashed)
+    array.push(high_lines, new_line)
+    if array.size(high_lines) > 10
+        line.delete(array.shift(high_lines))
+
+if show_lines and not na(pivotLow)
+    new_line = line.new(bar_index - swing_length, pivotLow, bar_index - swing_length + line_extend, pivotLow, color=color.new(color.green, 50), width=1, style=line.style_dashed)
+    array.push(low_lines, new_line)
+    if array.size(low_lines) > 10
+        line.delete(array.shift(low_lines))
+
+// ========================================
+// TREND ANALYZER
+// ========================================
+
+// MA Trend
+ma_trend = close > ma1 and ma1 > ma2 and ma2 > ma3 ? "BULLISH" : close < ma1 and ma1 < ma2 and ma2 < ma3 ? "BEARISH" : "NEUTRAL"
+
+// Overall Trend with engulfing confirmation
+overall_trend = ma_trend == "BULLISH" ? "🟢 BULLISH" : ma_trend == "BEARISH" ? "🔴 BEARISH" : "⚪ NEUTRAL"
+
+// ========================================
+// INFO TABLE
+// ========================================
+
+var table infoTable = table.new(position.top_right, 2, 3, border_width=2, border_color=color.new(color.gray, 50), frame_width=2, frame_color=color.new(color.gray, 50))
+
+if barstate.islast
+    // Header
+    table.cell(infoTable, 0, 0, "TREND ANALYZER", bgcolor=color.new(color.gray, 80), text_color=color.white, text_size=size.normal)
+    table.cell(infoTable, 1, 0, "", bgcolor=color.new(color.gray, 80), text_color=color.white, text_size=size.normal)
+    
+    // Overall Trend
+    trend_color = overall_trend == "🟢 BULLISH" ? color.new(color.lime, 70) : overall_trend == "🔴 BEARISH" ? color.new(color.red, 70) : color.new(color.gray, 80)
+    
+    table.cell(infoTable, 0, 1, "Trend", bgcolor=color.new(color.gray, 90), text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 1, overall_trend, bgcolor=trend_color, text_color=color.white, text_size=size.normal)
+    
+    // MA Alignment
+    ma_color = ma_trend == "BULLISH" ? color.new(color.lime, 70) : ma_trend == "BEARISH" ? color.new(color.red, 70) : color.new(color.gray, 80)
+    
+    table.cell(infoTable, 0, 2, "MA Status", bgcolor=color.new(color.gray, 90), text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 2, ma_trend, bgcolor=ma_color, text_color=color.white, text_size=size.small)
+
+// ========================================
+// ALERTS
+// ========================================
+
+alertcondition(bullishEngulfing, "Bullish Engulfing", "🟢 Bullish Engulfing Pattern!")
+alertcondition(bearishEngulfing, "Bearish Engulfing", "🔴 Bearish Engulfing Pattern!")
+alertcondition(ta.crossover(close, ma1), "Price Above MA1", "💹 Price crossed above fast MA")
+alertcondition(ta.crossunder(close, ma1), "Price Below MA1", "⚠️ Price crossed below fast MA")
